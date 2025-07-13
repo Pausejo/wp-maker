@@ -21,7 +21,7 @@ Un lienzo interactivo que permite dividir formas con cortes, modificar colores m
 
 ## 🚀 Demo
 
-Puedes probar el proyecto en vivo subiendo el archivo a un servidor local o simplemente abriendo el `index.html` en tu navegador.
+[Demo] (https://pausejo.github.io/wp-maker/)
 
 ---
 
