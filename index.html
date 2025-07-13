@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Divisor de Color Interactivo con IA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Librería para el selector de color HSL -->
+    <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+            background-color: #000;
+            cursor: crosshair;
+        }
+        .controls {
+            position: absolute;
+            top: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+            align-items: center;
+            background-color: rgba(30, 30, 30, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 0.5rem 1.25rem;
+            border-radius: 9999px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .control-group { display: flex; align-items: center; gap: 0.5rem; }
+        .color-picker-wrapper {
+            position: relative; width: 32px; height: 32px;
+            border-radius: 50%; overflow: hidden; border: 2px solid white;
+        }
+        input[type="color"] {
+            position: absolute; top: -10px; left: -10px;
+            width: 56px; height: 56px; border: none;
+            cursor: pointer; padding: 0; background: none;
+        }
+        .modal { z-index: 50; }
+        .iro__slider { border-radius: 8px; }
+        .iro__wheel { border-radius: 50%; }
+        
+        input[type="range"] {
+            -webkit-appearance: none; appearance: none;
+            width: 100px; height: 8px; background: rgba(255, 255, 255, 0.3);
+            border-radius: 5px; outline: none; transition: opacity .2s;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 20px; height: 20px; background: #ffffff;
+            cursor: pointer; border-radius: 50%;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px; height: 20px; background: #ffffff;
+            cursor: pointer; border-radius: 50%;
+        }
+        /* Animación para el spinner */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-left-color: #ffffff;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <div id="app-container" class="relative w-full h-full">
+        <canvas id="canvas"></canvas>
+
+        <div class="controls">
+            <div class="control-group">
+                <div class="color-picker-wrapper">
+                    <input type="color" id="colorPicker" value="#000000">
+                </div>
+                <button id="resetButton" class="bg-white/20 hover:bg-white/30 text-white font-semibold py-2 px-4 rounded-full transition-colors duration-200">
+                    Reiniciar
+                </button>
+            </div>
+            <div class="control-group">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5C7.03 5 3 9.03 3 14c0 2.97 1.66 5.58 4 6.93.34.2.5.58.5.97v1.1c0 .38.47.65.81.45C12.92 20.25 21 16.22 21 10c0-4.97-4.03-5-9-5Z"/><path d="M8 14v-2"/></svg>
+                <input type="range" id="radius-slider" min="0" max="50" value="10">
+                <span id="radius-label" class="text-sm font-mono w-10 text-center">10px</span>
+            </div>
+            <div class="control-group">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4"/><path d="M20 20V4"/><path d="M12 4v16"/></svg>
+                <input type="range" id="margin-slider" min="0" max="20" value="10">
+                <span id="margin-label" class="text-sm font-mono w-10 text-center">10px</span>
+            </div>
+        </div>
+
+        <!-- Modal para el selector de color HSL -->
+        <div id="color-picker-modal" class="modal fixed inset-0 bg-black/60 hidden items-center justify-center p-4">
+            <div class="bg-gray-800 rounded-2xl shadow-2xl p-6 w-full max-w-xs">
+                <div class="flex justify-center mb-4" id="color-picker-container"></div>
+                <div class="flex gap-4">
+                    <button id="cancel-color" class="w-full bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Cancelar</button>
+                    <button id="confirm-color" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Confirmar</button>
+                </div>
+                <!-- ✨ Botón para abrir el modal de Gemini -->
+                <button id="open-gemini-modal" class="w-full mt-4 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2">
+                    ✨ Generar con IA
+                </button>
+            </div>
+        </div>
+
+        <!-- ✨ Modal para la paleta de Gemini -->
+        <div id="gemini-modal" class="modal fixed inset-0 bg-black/80 hidden items-center justify-center p-4">
+            <div class="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+                <h3 class="text-lg font-bold text-center mb-4">Describe una paleta de colores</h3>
+                <textarea id="gemini-prompt" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500" rows="3" placeholder="Ej: atardecer en la playa, bosque de neón..."></textarea>
+                <div id="gemini-controls" class="flex gap-4 mt-4">
+                    <button id="gemini-cancel" class="w-full bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Volver</button>
+                    <button id="gemini-generate" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-lg transition-colors">Generar</button>
+                </div>
+                <div id="gemini-loading" class="hidden justify-center items-center mt-4">
+                    <div class="spinner"></div>
+                </div>
+                <div id="gemini-swatches" class="grid grid-cols-5 gap-3 mt-4"></div>
+            </div>
+        </div>
+        
+        <!-- Botón flotante para guardar -->
+        <button id="save-button" title="Guardar como imagen" class="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-500 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform hover:scale-110 transition-transform z-20">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+        </button>
+          
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- Referencias a elementos del DOM ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const colorPicker = document.getElementById('colorPicker');
+        const resetButton = document.getElementById('resetButton');
+        const radiusSlider = document.getElementById('radius-slider');
+        const radiusLabel = document.getElementById('radius-label');
+        const marginSlider = document.getElementById('margin-slider');
+        const marginLabel = document.getElementById('margin-label');
+        const saveButton = document.getElementById('save-button');
+
+        // Modal de color HSL
+        const hslModal = document.getElementById('color-picker-modal');
+        const colorPickerContainer = document.getElementById('color-picker-container');
+        const confirmBtn = document.getElementById('confirm-color');
+        const cancelBtn = document.getElementById('cancel-color');
+        
+        // Modal de Gemini
+        const openGeminiBtn = document.getElementById('open-gemini-modal');
+        const geminiModal = document.getElementById('gemini-modal');
+        const geminiPrompt = document.getElementById('gemini-prompt');
+        const geminiGenerateBtn = document.getElementById('gemini-generate');
+        const geminiCancelBtn = document.getElementById('gemini-cancel');
+        const geminiLoading = document.getElementById('gemini-loading');
+        const geminiSwatches = document.getElementById('gemini-swatches');
+        const geminiControls = document.getElementById('gemini-controls');
+
+        // --- Estado de la aplicación ---
+        let panels = [];
+        let isDrawing = false;
+        let startPoint = null;
+        let currentPoint = null;
+        let longPressTimer = null;
+        let activePanelIndex = -1;
+        let iroColorPicker = null;
+        let currentBorderRadius = 10;
+        let currentMarginWidth = 10;
+
+        // --- Lógica principal de dibujado ---
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            init();
+        }
+
+        function init() {
+                panels = [];
+
+                const marginInset = currentMarginWidth / 4;
+
+                const initialPanel = {
+                    polygon: [
+                        { x: marginInset, y: marginInset },
+                        { x: canvas.width - marginInset, y: marginInset },
+                        { x: canvas.width - marginInset, y: canvas.height - marginInset },
+                        { x: marginInset, y: canvas.height - marginInset }
+                    ],
+                    color: colorPicker.value
+                };
+
+                panels.push(initialPanel);
+        }
+
+        function drawLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, canvas.width, canvas.height);
+            ctx.clip();
+            panels.forEach(panel => {
+                drawRoundedPolygon(panel.polygon, panel.color, currentBorderRadius);
+            });
+            ctx.restore();
+            if (isDrawing && startPoint && currentPoint) {
+                drawTrail();
+            }
+            requestAnimationFrame(drawLoop);
+        }
+
+        function drawRoundedPolygon(polygon, color, radius) {
+            if (polygon.length < 3) return;
+            const numRadius = Number(radius);
+            ctx.beginPath();
+            ctx.moveTo(polygon[polygon.length - 1].x, polygon[polygon.length - 1].y);
+            for (let i = 0; i < polygon.length; i++) {
+                const p1 = polygon[i];
+                const p2 = polygon[(i + 1) % polygon.length];
+                const pPrev = polygon[(i + polygon.length - 1) % polygon.length];
+                const edge1Len = Math.hypot(p1.x - pPrev.x, p1.y - pPrev.y);
+                const edge2Len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                const currentRadius = Math.min(numRadius, edge1Len / 2, edge2Len / 2);
+                ctx.arcTo(p1.x, p1.y, p2.x, p2.y, currentRadius > 0 ? currentRadius : 0);
+            }
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            const numMargin = Number(currentMarginWidth);
+            if (numMargin > 0) {
+                ctx.strokeStyle = colorPicker.value;
+                ctx.lineWidth = numMargin / 2;
+                ctx.stroke();
+            }
+        }
+
+        function drawTrail() {
+            ctx.beginPath();
+            ctx.moveTo(startPoint.x, startPoint.y);
+            ctx.lineTo(currentPoint.x, currentPoint.y);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 5]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // --- Lógica de Interacción (Cortes y Pulsación Larga) ---
+        function handleStart(e) {
+            startPoint = getCoordinates(e);
+            currentPoint = startPoint;
+            isDrawing = true;
+            clearTimeout(longPressTimer);
+            longPressTimer = setTimeout(() => {
+                isDrawing = false;
+                handleLongPress(startPoint);
+            }, 500);
+        }
+        
+        function handleMove(e) {
+            if (!isDrawing) return;
+            clearTimeout(longPressTimer);
+            currentPoint = getCoordinates(e);
+            e.preventDefault();
+        }
+
+        function handleEnd(e) {
+            clearTimeout(longPressTimer);
+            if (!isDrawing) return;
+            const endPoint = getCoordinates(e);
+            const distance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+            if (distance > 20) {
+                performCut(startPoint, endPoint);
+            }
+            isDrawing = false;
+            startPoint = null;
+            currentPoint = null;
+        }
+
+        function handleLongPress(point) {
+            activePanelIndex = findPanelToCut(point);
+            if (activePanelIndex !== -1) {
+                const activePanel = panels[activePanelIndex];
+                showHslModal(activePanel.color);
+            }
+        }
+
+        // --- Lógica de Modales ---
+        function showHslModal(initialColor) {
+            if (!iroColorPicker) {
+                iroColorPicker = new iro.ColorPicker(colorPickerContainer, {
+                    width: 240, color: initialColor, borderWidth: 2, borderColor: "#4A5568",
+                    layout: [
+                        { component: iro.ui.Wheel },
+                        { component: iro.ui.Slider, options: { sliderType: 'saturation' } },
+                        { component: iro.ui.Slider, options: { sliderType: 'value' } },
+                    ]
+                });
+            } else {
+                iroColorPicker.color.set(initialColor);
+            }
+            hslModal.classList.remove('hidden');
+            hslModal.classList.add('flex');
+        }
+
+        function hideHslModal() {
+            hslModal.classList.add('hidden');
+            hslModal.classList.remove('flex');
+        }
+
+        function showGeminiModal() {
+            geminiPrompt.value = '';
+            geminiSwatches.innerHTML = '';
+            geminiLoading.classList.add('hidden');
+            geminiControls.classList.remove('hidden');
+            geminiModal.classList.remove('hidden');
+            geminiModal.classList.add('flex');
+        }
+
+        function hideGeminiModal() {
+            geminiModal.classList.add('hidden');
+            geminiModal.classList.remove('flex');
+        }
+
+        // --- ✨ Lógica de Gemini API ---
+        async function generatePalette() {
+            const prompt = geminiPrompt.value;
+            if (!prompt) {
+                alert("Por favor, describe una paleta de colores.");
+                return;
+            }
+
+            geminiControls.classList.add('hidden');
+            geminiLoading.classList.remove('hidden');
+            geminiSwatches.innerHTML = '';
+
+            const chatHistory = [{
+                role: "user",
+                parts: [{ text: `Generate a color palette of 5 hex colors based on the theme: "${prompt}".` }]
+            }];
+
+            const payload = {
+                contents: chatHistory,
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            colors: {
+                                type: "ARRAY",
+                                description: "An array of 5 hex color codes.",
+                                items: { "type": "STRING" }
+                            }
+                        },
+                        required: ["colors"]
+                    }
+                }
+            };
+
+            const apiKey = ""; // API key is handled by the environment
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error de red: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    
+                    const jsonText = result.candidates[0].content.parts[0].text;
+                    const parsedJson = JSON.parse(jsonText);
+                    displaySwatches(parsedJson.colors);
+
+                } else {
+                    throw new Error("Respuesta inesperada de la API.");
+                }
+
+            } catch (error) {
+                console.error("Error al llamar a la API de Gemini:", error);
+                geminiSwatches.innerHTML = `<p class="text-red-400 col-span-5 text-center">No se pudo generar la paleta. Inténtalo de nuevo.</p>`;
+            } finally {
+                geminiLoading.classList.add('hidden');
+                geminiControls.classList.remove('hidden');
+            }
+        }
+
+        function displaySwatches(colors) {
+            geminiSwatches.innerHTML = '';
+            colors.forEach(color => {
+                const swatch = document.createElement('div');
+                swatch.className = 'h-12 w-full rounded-lg cursor-pointer transform hover:scale-110 transition-transform';
+                swatch.style.backgroundColor = color;
+                swatch.addEventListener('click', () => {
+                    if (activePanelIndex !== -1) {
+                        panels[activePanelIndex].color = color;
+                    }
+                    hideGeminiModal();
+                    hideHslModal();
+                });
+                geminiSwatches.appendChild(swatch);
+            });
+        }
+
+        // --- Lógica de Geometría (sin cambios) ---
+        function getCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+            if (e.touches) {
+                if (e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } 
+                else { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; }
+            } else { clientX = e.clientX; clientY = e.clientY; }
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+        function performCut(p1, p2) {
+            const panelIndexToCut = findPanelToCut(p1);
+            if (panelIndexToCut === -1) return;
+            const panelToCut = panels[panelIndexToCut];
+            const extendedLine = extendLine(p1, p2, canvas.width * 2);
+            const [poly1, poly2] = splitPolygon(panelToCut.polygon, extendedLine);
+            if (poly1.length > 2 && poly2.length > 2) {
+                const newPanel1 = { polygon: poly1, color: varyColor(panelToCut.color) };
+                const newPanel2 = { polygon: poly2, color: varyColor(panelToCut.color, true) };
+                panels.splice(panelIndexToCut, 1, newPanel1, newPanel2);
+            }
+        }
+        function extendLine(p1, p2, scale = 2000) {
+            const dx = p2.x - p1.x; const dy = p2.y - p1.y;
+            return { p1: { x: p1.x - dx * scale, y: p1.y - dy * scale }, p2: { x: p2.x + dx * scale, y: p2.y + dy * scale } };
+        }
+        function findPanelToCut(point) {
+            for (let i = panels.length - 1; i >= 0; i--) { if (isPointInPolygon(point, panels[i].polygon)) { return i; } }
+            return -1;
+        }
+        function isPointInPolygon(point, polygon) {
+            let isInside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].x, yi = polygon[i].y; const xj = polygon[j].x, yj = polygon[j].y;
+                const intersect = ((yi > point.y) !== (yj > point.y)) && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+                if (intersect) isInside = !isInside;
+            }
+            return isInside;
+        }
+        function splitPolygon(polygon, line) {
+            const newPoly1 = [], newPoly2 = [];
+            for (let i = 0; i < polygon.length; i++) {
+                const p1 = polygon[i], p2 = polygon[(i + 1) % polygon.length];
+                const p1_side = getSide(line, p1), p2_side = getSide(line, p2);
+                if (p1_side >= 0) newPoly1.push(p1);
+                if (p1_side <= 0) newPoly2.push(p1);
+                if (p1_side * p2_side < 0) {
+                    const intersectionPoint = getIntersection(p1, p2, line.p1, line.p2);
+                    if (intersectionPoint) { newPoly1.push(intersectionPoint); newPoly2.push(intersectionPoint); }
+                }
+            }
+            return [newPoly1, newPoly2];
+        }
+        function getSide(line, point) { return (line.p2.x - line.p1.x) * (point.y - line.p1.y) - (line.p2.y - line.p1.y) * (point.x - line.p1.x); }
+        function getIntersection(a, b, c, d) {
+            const tTop = (d.x - c.x) * (a.y - c.y) - (d.y - c.y) * (a.x - c.x);
+            const uTop = (c.y - a.y) * (a.x - b.x) - (c.x - a.x) * (a.y - b.y);
+            const bottom = (d.y - c.y) * (b.x - a.x) - (d.x - c.x) * (b.y - a.y);
+            if (bottom !== 0) {
+                const t = tTop / bottom, u = uTop / bottom;
+                if (t >= 0 && t <= 1 && u >= 0 && u <= 1) { return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) }; }
+            }
+            return null;
+        }
+        function varyColor(hex, forceVariation = false) {
+            let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+            let amount = 30 + Math.random() * 20; if (forceVariation) amount += 20;
+            r += Math.floor(Math.random() * amount * 2) - amount; g += Math.floor(Math.random() * amount * 2) - amount; b += Math.floor(Math.random() * amount * 2) - amount;
+            r = Math.max(0, Math.min(255, r)); g = Math.max(0, Math.min(255, g)); b = Math.max(0, Math.min(255, b));
+            const toHex = c => ('0' + c.toString(16)).slice(-2);
+            return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+        }
+        
+        function saveCanvasAsImage() {
+            // Dibuja el fondo negro primero para que se incluya en la imagen guardada
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'source-over';
+
+            const link = document.createElement('a');
+            link.download = 'mi-creacion.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+
+        // --- Event Listeners ---
+        window.addEventListener('resize', resizeCanvas);
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseleave', (e) => { if(isDrawing) { clearTimeout(longPressTimer); isDrawing = false; } });
+        canvas.addEventListener('touchstart', handleStart, { passive: false });
+        canvas.addEventListener('touchmove', handleMove, { passive: false });
+        canvas.addEventListener('touchend', handleEnd, { passive: false });
+        resetButton.addEventListener('click', resizeCanvas);
+        colorPicker.addEventListener('input', (e) => { if (panels.length === 1) { panels[0].color = e.target.value; } });
+        radiusSlider.addEventListener('input', (e) => { currentBorderRadius = e.target.value; radiusLabel.textContent = `${currentBorderRadius}px`; });
+        marginSlider.addEventListener('input', (e) => { currentMarginWidth = e.target.value; marginLabel.textContent = `${currentMarginWidth}px`; });
+        confirmBtn.addEventListener('click', () => { if (activePanelIndex !== -1) { panels[activePanelIndex].color = iroColorPicker.color.hexString; } hideHslModal(); });
+        cancelBtn.addEventListener('click', hideHslModal);
+        openGeminiBtn.addEventListener('click', showGeminiModal);
+        geminiCancelBtn.addEventListener('click', hideGeminiModal);
+        geminiGenerateBtn.addEventListener('click', generatePalette);
+        saveButton.addEventListener('click', saveCanvasAsImage);
+
+        // --- Arranque ---
+        resizeCanvas();
+        drawLoop();
+    });
+    </script>
+</body>
+</html>
