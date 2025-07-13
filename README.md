@@ -21,7 +21,7 @@ Un lienzo interactivo que permite dividir formas con cortes, modificar colores m
 
 ## 🚀 Demo
 
-[Demo] (https://pausejo.github.io/wp-maker/)
+[Demo](https://pausejo.github.io/wp-maker/)
 
 ---
 
