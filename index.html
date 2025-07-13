@@ -258,7 +258,8 @@
                 });
 
                 // Color Picker Modal
-                DOM.colorPickerPreview.addEventListener('click', () => {
+                DOM.colorPickerPreview.addEventListener('click', (event) => {
+                    event.preventDefault(); 
                     // Al hacer clic en la vista previa, seleccionamos el panel de fondo (índice 0 si es el único)
                     State.activePanelIndex = (State.panels.length === 1) ? 0 : -1;
                     this.showHslModal(State.backgroundColor);
